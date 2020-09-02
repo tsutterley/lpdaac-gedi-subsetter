@@ -116,6 +116,8 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
     #-- print number of files found for spatial and temporal query
     print("Query returned {} files".format(len(file_list))) if VERBOSE else None
 
+    print("Query returned {} files".format(len(file_list)))
+
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):
         #-- retrieve each GEDI file from LP.DAAC server
