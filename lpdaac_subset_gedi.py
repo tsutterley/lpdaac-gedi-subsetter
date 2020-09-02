@@ -75,13 +75,14 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
     #-- spatially subset data using bounding box or polygon file
     if BBOX:
         #-- if using a bounding box to spatially subset data
-        #-- min_lon,min_lat,max_lon,max_lat
-        bounds_flag = '&bbox={0:f},{1:f},{2:f},{3:f}'.format(*BBOX)
+        #-- API expects: min_lat,min_lon,max_lat,max_lon
+        bounds_flag = '&bbox={1:f},{0:f},{3:f},{2:f}'.format(*BBOX)
     else:
         #-- do not spatially subset data
         bounds_flag = ''
 
     #-- remote https server for page of LP.DAAC Data
+    print("Querying LP-DAAC for available granules")
     HOST=posixpath.join('https://lpdaacsvc.cr.usgs.gov','services','gedifinder')
     remote_url=''.join([HOST,product_flag,version_flag,bounds_flag])
     #-- Create and submit request. There are a wide range of exceptions
@@ -105,6 +106,8 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
         file_list = sorted([f for f in response['data'] if rx.search(f)])
     else:
         file_list = sorted(response['data'])
+
+    print("Query returned {} files".format(len(file_list)))
 
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):

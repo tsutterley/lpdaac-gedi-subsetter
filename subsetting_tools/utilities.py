@@ -159,6 +159,7 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
         #-- There are a wide range of exceptions that can be thrown here
         #-- including HTTPError and URLError.
         request = urllib2.Request(remote_file)
+        print("Downloading: ", remote_file)
         response = urllib2.urlopen(request, timeout=timeout)
     except:
         raise Exception('Download error from {0}'.format(remote_file))
