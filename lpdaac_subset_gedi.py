@@ -75,8 +75,8 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
     #-- spatially subset data using bounding box or polygon file
     if BBOX:
         #-- if using a bounding box to spatially subset data
-        #-- min_lon,min_lat,max_lon,max_lat
-        bounds_flag = '&bbox={0:f},{1:f},{2:f},{3:f}'.format(*BBOX)
+        #-- API expects: min_lat,min_lon,max_lat,max_lon
+        bounds_flag = '&bbox={1:f},{0:f},{3:f},{2:f}'.format(*BBOX)
     else:
         #-- do not spatially subset data
         bounds_flag = ''
