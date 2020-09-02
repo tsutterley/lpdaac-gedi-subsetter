@@ -82,6 +82,7 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
         bounds_flag = ''
 
     #-- remote https server for page of LP.DAAC Data
+    print("Querying LP-DAAC for available granules")
     HOST=posixpath.join('https://lpdaacsvc.cr.usgs.gov','services','gedifinder')
     remote_url=''.join([HOST,product_flag,version_flag,bounds_flag])
     #-- Create and submit request. There are a wide range of exceptions
@@ -105,6 +106,8 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
         file_list = sorted([f for f in response['data'] if rx.search(f)])
     else:
         file_list = sorted(response['data'])
+
+    print("Query returned {} files".format(len(file_list)))
 
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):
