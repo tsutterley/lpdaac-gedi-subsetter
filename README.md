@@ -13,7 +13,7 @@ lpdaac-gedi-subsetter
 ### Calling Sequence
 ```bash
 python lpdaac_subset_gedi.py -T 2019-04-01T00:00:00,2019-04-30T23:59:59 \
-	-B 42.0,-100,40.0,-96.0 --version=001 --user=<username> -V -Z GEDI02_A
+	-B 42.0,-100,40.0,-96.0 --version=001 --user=<username> -V GEDI02_A
 ```
 
 #### Products
