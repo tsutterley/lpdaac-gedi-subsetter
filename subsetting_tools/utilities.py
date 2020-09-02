@@ -1,7 +1,7 @@
 """
 utilities.py
 Written by Tyler Sutterley (09/2020)
-Download and management utilities for syncing time and auxiliary files
+Download and management utilities for syncing files
 
 UPDATE HISTORY:
     Written 09/2020
@@ -16,6 +16,7 @@ import base64
 import inspect
 import hashlib
 import posixpath
+import lxml.etree
 import calendar,time
 if sys.version_info[0] == 2:
     from cookielib import CookieJar
@@ -123,13 +124,14 @@ def build_opener(username, password, urs='https://urs.earthdata.nasa.gov'):
 
 #-- PURPOSE: download a file from NASA LP.DAAC https server
 def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
-    timeout=None,hash='',chunk=16384,mode=0o775):
+    timeout=None,chunk=16384,mode=0o775):
     """
     Download a file from NASA LP.DAAC archive server
 
     Arguments
     ---------
-    HOST: remote https host path split as list
+    remote_file: remote file path
+    local_file: local file path
 
     Keyword arguments
     -----------------
@@ -137,8 +139,6 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
     password: NASA Earthdata password
     build: Build opener
     timeout: timeout in seconds for blocking operations
-    local: path to local file
-    hash: MD5 hash of local file
     chunk: chunk size for transfer encoding
     mode: permissions mode of output local file
 
@@ -173,3 +173,44 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
         os.chmod(local_file, mode)
         #-- return the output string
         return output
+
+#-- PURPOSE: compare MD5 checksums from xml file and local file
+def compare_checksums(remote_xml,local_file,username=None,password=None,
+    build=False,timeout=None):
+    """
+    Compare MD5 checksums from xml file and local file
+
+    Arguments
+    ---------
+    remote_xml: remote XML file path
+    local_file: local file path
+
+    Keyword arguments
+    -----------------
+    username: NASA Earthdata username
+    password: NASA Earthdata password
+    build: Build opener
+    timeout: timeout in seconds for blocking operations
+
+    Returns
+    -------
+    output: results of comparison between checksums
+    """
+    #-- build urllib2 opener and check credentials
+    if build:
+        #-- build urllib2 opener with credentials
+        build_opener(username, password)
+    #-- try reading xml file from https
+    try:
+        request = urllib2.Request(remote_xml)
+        response = urllib2.urlopen(request,timeout=timeout)
+    except:
+        raise Exception('XML download error: {0}'.format(remote_xml))
+    else:
+        #-- get MDF5 hash of remote file
+        tree = lxml.etree.parse(response,lxml.etree.XMLParser())
+        remote_hash, = tree.xpath('//DataFileContainer/Checksum/text()')
+        #-- get MDF5 hash of local file
+        local_hash = get_hash(local_file)
+        #-- compare checksums and return result
+        return (local_hash == remote_hash)

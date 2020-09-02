@@ -1,4 +1,9 @@
 from setuptools import setup, find_packages
+
+# get install requirements
+with open('requirements.txt') as fh:
+    install_requires = fh.read().splitlines()
+
 setup(
     name='lpdaac-gedi-subsetter',
     version='0.0.0.1',
@@ -13,9 +18,12 @@ setup(
         'Topic :: Scientific/Engineering :: Physics',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
-    keywords='LP.DAAC GEDI subsetting',
+    keywords='LP.DAAC GEDI laser altimetry subsetting',
     packages=find_packages(),
-    install_requires=['future','python-dateutil'],
+    scripts=['lpdaac_subset_gedi.py'],
+    install_requires=install_requires,
 )
