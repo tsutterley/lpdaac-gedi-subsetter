@@ -124,7 +124,7 @@ def build_opener(username, password, urs='https://urs.earthdata.nasa.gov'):
 
 #-- PURPOSE: download a file from NASA LP.DAAC https server
 def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
-    timeout=None,chunk=16384,mode=0o775):
+    timeout=None,chunk=16384,verbose=False,mode=0o775):
     """
     Download a file from NASA LP.DAAC archive server
 
@@ -140,6 +140,7 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
     build: Build opener
     timeout: timeout in seconds for blocking operations
     chunk: chunk size for transfer encoding
+    verbose: verbose output of download
     mode: permissions mode of output local file
 
     Returns
@@ -159,13 +160,13 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
         #-- There are a wide range of exceptions that can be thrown here
         #-- including HTTPError and URLError.
         request = urllib2.Request(remote_file)
-        print("Downloading: ", remote_file)
         response = urllib2.urlopen(request, timeout=timeout)
+        #-- string to print files transferred
+        output = '{0} -->\n\t{1}\n'.format(remote_file,local_file)
+        print(output) if verbose else None
     except:
         raise Exception('Download error from {0}'.format(remote_file))
     else:
-        #-- string to print files transferred
-        output = '{0} -->\n\t{1}\n'.format(remote_file,local_file)
         #-- copy contents to local file using chunked transfer encoding
         #-- transfer should work properly with ascii and binary formats
         with open(local_file, 'wb') as f:

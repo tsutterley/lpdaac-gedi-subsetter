@@ -116,8 +116,6 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
     #-- print number of files found for spatial and temporal query
     print("Query returned {} files".format(len(file_list))) if VERBOSE else None
 
-    print("Query returned {} files".format(len(file_list)))
-
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):
         #-- retrieve each GEDI file from LP.DAAC server
@@ -128,10 +126,8 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, TIME=None,
             xml = '{0}.xml'.format(remote_file)
             if not subsetting_tools.utilities.compare_checksums(xml,local_file):
                 #-- get remote file
-                out = subsetting_tools.utilities.from_lpdaac(remote_file,
-                    local_file, build=False, mode=MODE)
-                #-- print the output string
-                print(out) if VERBOSE else None
+                subsetting_tools.utilities.from_lpdaac(remote_file, local_file,
+                    build=False, verbose=VERBOSE, mode=MODE)
     else:
         #-- sync in parallel with multiprocessing Pool
         pool = mp.Pool(processes=PROCESSES)
@@ -159,7 +155,7 @@ def multiprocess_sync(remote_file, local_file, MODE):
     if not subsetting_tools.utilities.compare_checksums(remote_xml,local_file):
         try:
             output = subsetting_tools.utilities.from_lpdaac(remote_file,
-                local_file, build=False,mode=MODE)
+                local_file, build=False, verbose=False, mode=MODE)
         except:
             #-- if there has been an error exception
             #-- print the type, value, and stack trace of the
