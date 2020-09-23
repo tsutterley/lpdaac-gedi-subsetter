@@ -12,8 +12,8 @@ Register with NASA Earthdata Login system:
 https://urs.earthdata.nasa.gov
 
 CALLING SEQUENCE:
-    python lpdaac_subset_gedi.py -T 2019-04-01T00:00:00,2019-04-30T23:59:59
-        -B 42.0,-100,40.0,-96.0 --version=001 --user=<username> -V GEDI01_B
+    python lpdaac_subset_gedi.py -T 2019-04-01T00:00:00 2019-04-30T23:59:59
+        -B 42.0 -100 40.0 -96.0 --version 001 --user <username> -V GEDI01_B
     where <username> is your NASA Earthdata username
 
 INPUTS:
