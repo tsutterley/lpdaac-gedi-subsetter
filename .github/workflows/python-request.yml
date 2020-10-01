@@ -28,27 +28,31 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install libxml2-dev libxslt1-dev
+        sudo apt-get install libxml2-dev libxslt1-dev gdal-bin libgdal-dev \
+            libproj-dev proj-data proj-bin libgeos-dev
         pip install --upgrade pip
+        export CPLUS_INCLUDE_PATH=/usr/include/gdal
+        export C_INCLUDE_PATH=/usr/include/gdal
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install .
     - name: Install dependencies for MacOS
       if: matrix.os == 'macos-latest'
       run: |
         brew install libxml2
         brew install libxslt
+        brew install proj
+        brew install geos
+        brew install gdal
         pip install --upgrade pip
+        pip install --upgrade setuptools
         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install .
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Install from source
-      run: |
-        pip install --no-deps .
     - name: Test with pytest
       run: |
         pytest --cov --cov-report=xml --cov-config=.coveragerc \
