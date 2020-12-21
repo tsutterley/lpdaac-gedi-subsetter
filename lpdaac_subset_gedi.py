@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 lpdaac_subset_gedi.py
-Written by Tyler Sutterley (10/2020)
+Written by Tyler Sutterley (12/2020)
 
 Program to acquire subset GEDI altimetry datafiles from the LP.DAAC API:
 https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
@@ -58,6 +58,7 @@ PROGRAM DEPENDENCIES:
     utilities.py: Download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2020: use absolute path for argparse paths
     Updated 10/2020: added polygon option to use bounds from georeferenced file
     Updated 09/2020: added more verbose flags to show progress
         using argparse instead of getopt to set command line parameters
@@ -233,13 +234,14 @@ def main(argv):
         metavar='PRODUCT', type=str, nargs='+', choices=PRODUCTS.keys(),
         help='GEDI Product')
     parser.add_argument('--directory','-D',
-        type=os.path.expanduser, default=os.getcwd(),
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.getcwd(),
         help='Working data directory')
     parser.add_argument('--user','-U',
         type=str, default='',
         help='Username for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
-        type=os.path.expanduser, default='',
+        type=lambda p: os.path.abspath(os.path.expanduser(p)),
         help='Path to .netrc file for authentication')
     parser.add_argument('--np','-P',
         metavar='PROCESSES', type=int, default=0,
@@ -258,28 +260,27 @@ def main(argv):
         help='Time range')
     parser.add_argument('--verbose','-V',
         default=False, action='store_true',
-            help='Verbose output of run')
+        help='Verbose output of run')
     parser.add_argument('--mode','-M',
         type=lambda x: int(x,base=8), default=0o775,
         help='Permissions mode of output files')
     args = parser.parse_args()
 
     #-- NASA Earthdata hostname
-    HOST = 'urs.earthdata.nasa.gov'
+    URS = 'urs.earthdata.nasa.gov'
     #-- get authentication
     if not args.user and not args.netrc:
         #-- check that NASA Earthdata credentials were entered
-        USER = builtins.input('Username for {0}: '.format(HOST))
+        args.user=builtins.input('Username for {0}: '.format(URS))
         #-- enter password securely from command-line
-        PASSWORD = getpass.getpass('Password for {0}@{1}: '.format(USER,HOST))
+        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,URS))
     elif args.netrc:
-        USER,LOGIN,PASSWORD = netrc.netrc(args.netrc).authenticators(HOST)
+        args.user,_,PASSWORD=netrc.netrc(args.netrc).authenticators(URS)
     else:
         #-- enter password securely from command-line
-        USER = args.user
-        PASSWORD = getpass.getpass('Password for {0}@{1}: '.format(USER,HOST))
+        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,URS))
     #-- build an opener for LP.DAAC
-    subsetting_tools.utilities.build_opener(USER, PASSWORD)
+    subsetting_tools.utilities.build_opener(args.user, PASSWORD)
 
     #-- recursively create directory if presently non-existent
     if not os.access(args.directory, os.F_OK):
@@ -287,7 +288,7 @@ def main(argv):
 
     #-- check internet connection before attempting to run program
     if subsetting_tools.utilities.check_connection('https://lpdaac.usgs.gov'):
-        #-- check that each data product entered was correctly typed
+        #-- for each GEDI product
         for p in args.product:
             #-- run program for product
             lpdaac_subset_gedi(args.directory,p,args.version,BBOX=args.bbox,
