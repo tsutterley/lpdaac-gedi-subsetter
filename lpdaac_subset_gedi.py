@@ -116,22 +116,22 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         if fileExtension in ('.shp','.zip'):
             #-- if reading a shapefile or a zipped directory with a shapefile
             ZIP = (fileExtension == '.zip')
-            mp=subsetting_tools.polygon().from_shapefile(f,variables=v,zip=ZIP)
+            mpoly=subsetting_tools.polygon().from_shapefile(f,variables=v,zip=ZIP)
         elif fileExtension in ('.kml','.kmz'):
             #-- if reading a keyhole markup language (can be compressed kmz)
             KMZ = (fileExtension == '.kmz')
-            mp=subsetting_tools.polygon().from_kml(f,variables=v,kmz=KMZ)
+            mpoly=subsetting_tools.polygon().from_kml(f,variables=v,kmz=KMZ)
         elif fileExtension in ('.json','.geojson'):
             #-- if reading a GeoJSON file
-            mp=subsetting_tools.polygon().from_geojson(f,variables=v)
+            mpoly=subsetting_tools.polygon().from_geojson(f,variables=v)
         else:
             raise IOError('Unlisted polygon type ({0})'.format(fileExtension))
         #-- calculate the bounds of the MultiPolygon object
         #-- Polygon object bounds: min_lon,min_lat,max_lon,max_lat
         #-- API expects: min_lat,min_lon,max_lat,max_lon
-        bounds_flag = '&bbox={1:f},{0:f},{3:f},{2:f}'.format(*mp.bounds)
+        bounds_flag = '&bbox={1:f},{0:f},{3:f},{2:f}'.format(*mpoly.bounds)
         if VERBOSE:
-            print("Polygon bounds: {1:f},{0:f},{3:f},{2:f}".format(*mp.bounds))
+            print("Polygon bounds: {1:f},{0:f},{3:f},{2:f}".format(*mpoly.bounds))
     else:
         #-- do not spatially subset data
         bounds_flag = ''
