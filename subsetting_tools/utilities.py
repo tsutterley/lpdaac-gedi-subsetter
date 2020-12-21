@@ -4,6 +4,8 @@ Written by Tyler Sutterley (09/2020)
 Download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 12/2020: added file object keyword for downloads if verbose
+        get_hash can accept file-like (e.g. BytesIO) objects
     Updated 09/2020: generalize build opener function for different instances
     Written 09/2020
 """
@@ -11,11 +13,11 @@ from __future__ import print_function
 
 import sys
 import os
+import io
 import ssl
 import netrc
 import shutil
 import base64
-import inspect
 import hashlib
 import posixpath
 import lxml.etree
@@ -30,14 +32,16 @@ else:
 #-- PURPOSE: get the MD5 hash value of a file
 def get_hash(local):
     """
-    Get the MD5 hash value from a local file
+    Get the MD5 hash value from a local file or BytesIO object
 
     Arguments
     ---------
-    local: path to file
+    local: BytesIO object or path to file
     """
-    #-- check if local file exists
-    if os.access(os.path.expanduser(local),os.F_OK):
+    #-- check if open file object or if local file exists
+    if isinstance(local, io.IOBase):
+        return hashlib.md5(local.getvalue()).hexdigest()
+    elif os.access(os.path.expanduser(local),os.F_OK):
         #-- generate checksum hash for local file
         #-- open the local_file in binary read mode
         with open(os.path.expanduser(local), 'rb') as local_buffer:
@@ -47,8 +51,17 @@ def get_hash(local):
 
 #-- PURPOSE: recursively split a url path
 def url_split(s):
+    """
+    Recursively split a url path into a list
+
+    Arguments
+    ---------
+    s: url string
+    """
     head, tail = posixpath.split(s)
-    if head in ('', posixpath.sep):
+    if head in ('http:','https:'):
+        return s,
+    elif head in ('', posixpath.sep):
         return tail,
     return url_split(head) + (tail,)
 
@@ -67,10 +80,33 @@ def get_unix_time(time_string, format='%Y-%m-%d %H:%M:%S'):
     """
     try:
         parsed_time = time.strptime(time_string.rstrip(), format)
-    except:
+    except (TypeError, ValueError):
         return None
     else:
         return calendar.timegm(parsed_time)
+
+#-- PURPOSE: make a copy of a file with all system information
+def copy(source, destination, verbose=False, move=False):
+    """
+    Copy or move a file with all system information
+
+    Arguments
+    ---------
+    source: source file
+    destination: copied destination file
+
+    Keyword arguments
+    -----------------
+    verbose: print file transfer information
+    move: remove the source file
+    """
+    source = os.path.abspath(os.path.expanduser(source))
+    destination = os.path.abspath(os.path.expanduser(destination))
+    print('{0} -->\n\t{1}'.format(source,destination)) if verbose else None
+    shutil.copyfile(source, destination)
+    shutil.copystat(source, destination)
+    if move:
+        os.remove(source)
 
 #-- PURPOSE: check internet connection
 def check_connection(HOST):
@@ -145,7 +181,7 @@ def build_opener(username, password, context=ssl.SSLContext(),
 
 #-- PURPOSE: download a file from NASA LP.DAAC https server
 def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
-    timeout=None,chunk=16384,verbose=False,mode=0o775):
+    timeout=None,chunk=16384,verbose=False,fid=sys.stdout,mode=0o775):
     """
     Download a file from NASA LP.DAAC archive server
 
@@ -162,6 +198,7 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
     timeout: timeout in seconds for blocking operations
     chunk: chunk size for transfer encoding
     verbose: verbose output of download
+    fid: open file object to print if verbose
     mode: permissions mode of output local file
 
     Returns
@@ -171,7 +208,7 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
     #-- use netrc credentials
     if build and not (username or password):
         urs = 'urs.earthdata.nasa.gov'
-        username,login,password = netrc.netrc().authenticators(urs)
+        username,_,password = netrc.netrc().authenticators(urs)
     #-- build urllib2 opener and check credentials
     if build:
         #-- build urllib2 opener with credentials
@@ -188,7 +225,7 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
         response = urllib2.urlopen(request, timeout=timeout)
         #-- string to print files transferred
         output = '{0} -->\n\t{1}\n'.format(remote_file,local_file)
-        print(output) if verbose else None
+        print(output, file=fid) if verbose else None
     except:
         raise Exception('Download error from {0}'.format(remote_file))
     else:
@@ -226,7 +263,7 @@ def compare_checksums(remote_xml,local_file,username=None,password=None,
     #-- use netrc credentials
     if build and not (username or password):
         urs = 'urs.earthdata.nasa.gov'
-        username,login,password = netrc.netrc().authenticators(urs)
+        username,_,password = netrc.netrc().authenticators(urs)
     #-- build urllib2 opener and check credentials
     if build:
         #-- build urllib2 opener with credentials
