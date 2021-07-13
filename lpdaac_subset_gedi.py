@@ -59,6 +59,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 07/2021: set context for multiprocessing to fork child processes
+        update regular expression pattern for release 2 of the files
     Updated 05/2021: use try/except for retrieving netrc credentials
     Updated 04/2021: set a default netrc file and check access
         default credentials from environmental variables
@@ -158,9 +159,9 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         #-- create a regular expression pattern for days of the year
         pattern = r'|'.join(datetime.datetime.strftime(t,'%Y%j') for t in days)
         #-- complete regular expression pattern for reducing to time
-        args = (PRODUCT,pattern)
         rx = re.compile((r'({0})_({1})(\d{{2}})(\d{{2}})(\d{{2}})_O(\d{{5}})_'
-            r'T(\d{{5}})_(\d{{2}})_(\d{{3}})_(\d{{2}})\.h5').format(*args))
+            r'(\d{{2}}_)?T(\d{{5}})_(\d{{2}})_(\d{{3}})_(\d{{2}})(_V\d{{3}})?'
+            r'\.h5').format(PRODUCT,pattern))
         #-- reduce list to times of interest
         file_list = sorted([f for f in response['data'] if rx.search(f)])
     else:
