@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 lpdaac_subset_gedi.py
-Written by Tyler Sutterley (12/2020)
+Written by Tyler Sutterley (07/2021)
 
 Program to acquire subset GEDI altimetry datafiles from the LP.DAAC API:
 https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
@@ -58,6 +58,11 @@ PROGRAM DEPENDENCIES:
     utilities.py: Download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2021: set context for multiprocessing to fork child processes
+        update regular expression pattern for release 2 of the files
+    Updated 05/2021: use try/except for retrieving netrc credentials
+    Updated 04/2021: set a default netrc file and check access
+        default credentials from environmental variables
     Updated 12/2020: use absolute path for argparse paths
     Updated 10/2020: added polygon option to use bounds from georeferenced file
     Updated 09/2020: added more verbose flags to show progress
@@ -154,9 +159,9 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         #-- create a regular expression pattern for days of the year
         pattern = r'|'.join(datetime.datetime.strftime(t,'%Y%j') for t in days)
         #-- complete regular expression pattern for reducing to time
-        args = (PRODUCT,pattern)
         rx = re.compile((r'({0})_({1})(\d{{2}})(\d{{2}})(\d{{2}})_O(\d{{5}})_'
-            r'T(\d{{5}})_(\d{{2}})_(\d{{3}})_(\d{{2}})\.h5').format(*args))
+            r'(\d{{2}}_)?T(\d{{5}})_(\d{{2}})_(\d{{3}})_(\d{{2}})(_V\d{{3}})?'
+            r'\.h5').format(PRODUCT,pattern))
         #-- reduce list to times of interest
         file_list = sorted([f for f in response['data'] if rx.search(f)])
     else:
@@ -179,8 +184,10 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
     else:
         if VERBOSE:
             print('Syncing in parallel with {0:d} processes'.format(PROCESSES))
+        #-- set multiprocessing start method
+        ctx = mp.get_context("fork")
         #-- sync in parallel with multiprocessing Pool
-        pool = mp.Pool(processes=PROCESSES)
+        pool = ctx.Pool(processes=PROCESSES)
         #-- retrieve each GEDI file from LP.DAAC server
         output = []
         for i,remote_file in enumerate(file_list):
@@ -238,10 +245,11 @@ def main(argv):
         default=os.getcwd(),
         help='Working data directory')
     parser.add_argument('--user','-U',
-        type=str, default='',
+        type=str, default=os.environ.get('EARTHDATA_USERNAME'),
         help='Username for NASA Earthdata Login')
     parser.add_argument('--netrc','-N',
         type=lambda p: os.path.abspath(os.path.expanduser(p)),
+        default=os.path.join(os.path.expanduser('~'),'.netrc'),
         help='Path to .netrc file for authentication')
     parser.add_argument('--np','-P',
         metavar='PROCESSES', type=int, default=0,
@@ -269,18 +277,18 @@ def main(argv):
     #-- NASA Earthdata hostname
     URS = 'urs.earthdata.nasa.gov'
     #-- get authentication
-    if not args.user and not args.netrc:
+    try:
+        args.user,_,PASSWORD = netrc.netrc(args.netrc).authenticators(URS)
+    except:
         #-- check that NASA Earthdata credentials were entered
-        args.user=builtins.input('Username for {0}: '.format(URS))
+        if not args.user:
+            prompt = 'Username for {0}: '.format(URS)
+            args.user = builtins.input(prompt)
         #-- enter password securely from command-line
-        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,URS))
-    elif args.netrc:
-        args.user,_,PASSWORD=netrc.netrc(args.netrc).authenticators(URS)
-    else:
-        #-- enter password securely from command-line
-        PASSWORD=getpass.getpass('Password for {0}@{1}: '.format(args.user,URS))
+        prompt = 'Password for {0}@{1}: '.format(args.user,URS)
+        PASSWORD = getpass.getpass(prompt)
     #-- build an opener for LP.DAAC
-    subsetting_tools.utilities.build_opener(args.user, PASSWORD)
+    opener = subsetting_tools.utilities.build_opener(args.user, PASSWORD)
 
     #-- recursively create directory if presently non-existent
     if not os.access(args.directory, os.F_OK):

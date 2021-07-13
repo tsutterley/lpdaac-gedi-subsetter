@@ -1,9 +1,12 @@
-"""
+#!/usr/bin/env python
+u"""
 utilities.py
-Written by Tyler Sutterley (09/2020)
+Written by Tyler Sutterley (07/2021)
 Download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 07/2021: return Earthdata opener from build function
+    Updated 03/2021: added sha1 option for retrieving file hashes
     Updated 12/2020: added file object keyword for downloads if verbose
         get_hash can accept file-like (e.g. BytesIO) objects
     Updated 09/2020: generalize build opener function for different instances
@@ -29,23 +32,36 @@ else:
     from http.cookiejar import CookieJar
     import urllib.request as urllib2
 
-#-- PURPOSE: get the MD5 hash value of a file
-def get_hash(local):
+#-- PURPOSE: get the hash value of a file
+def get_hash(local, algorithm='MD5'):
     """
-    Get the MD5 hash value from a local file or BytesIO object
+    Get the hash value from a local file or BytesIO object
 
     Arguments
     ---------
     local: BytesIO object or path to file
+
+    Keyword Arguments
+    -----------------
+    algorithm: hashing algorithm for checksum validation
+        MD5: Message Digest
+        sha1: Secure Hash Algorithm
     """
     #-- check if open file object or if local file exists
     if isinstance(local, io.IOBase):
-        return hashlib.md5(local.getvalue()).hexdigest()
+        if (algorithm == 'MD5'):
+            return hashlib.md5(local.getvalue()).hexdigest()
+        elif (algorithm == 'sha1'):
+            return hashlib.sha1(local.getvalue()).hexdigest()
     elif os.access(os.path.expanduser(local),os.F_OK):
         #-- generate checksum hash for local file
         #-- open the local_file in binary read mode
         with open(os.path.expanduser(local), 'rb') as local_buffer:
-            return hashlib.md5(local_buffer.read()).hexdigest()
+            #-- generate checksum hash for a given type
+            if (algorithm == 'MD5'):
+                return hashlib.md5(local_buffer.read()).hexdigest()
+            elif (algorithm == 'sha1'):
+                return hashlib.sha1(local_buffer.read()).hexdigest()
     else:
         return ''
 
@@ -84,6 +100,17 @@ def get_unix_time(time_string, format='%Y-%m-%d %H:%M:%S'):
         return None
     else:
         return calendar.timegm(parsed_time)
+
+#-- PURPOSE: rounds a number to an even number less than or equal to original
+def even(value):
+    """
+    Rounds a number to an even number less than or equal to original
+
+    Arguments
+    ---------
+    value: number to be rounded
+    """
+    return 2*int(value//2)
 
 #-- PURPOSE: make a copy of a file with all system information
 def copy(source, destination, verbose=False, move=False):
@@ -178,6 +205,7 @@ def build_opener(username, password, context=ssl.SSLContext(),
     #-- All calls to urllib2.urlopen will now use handler
     #-- Make sure not to include the protocol in with the URL, or
     #-- HTTPPasswordMgrWithDefaultRealm will be confused.
+    return opener
 
 #-- PURPOSE: download a file from NASA LP.DAAC https server
 def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
@@ -213,6 +241,8 @@ def from_lpdaac(remote_file,local_file,username=None,password=None,build=True,
     if build:
         #-- build urllib2 opener with credentials
         build_opener(username, password)
+    #-- convert to absolute path
+    local_file = os.path.abspath(local_file)
     #-- recursively create local directory and change permissions mode
     if not os.access(os.path.dirname(local_file), os.F_OK):
         os.makedirs(os.path.dirname(local_file),mode)
