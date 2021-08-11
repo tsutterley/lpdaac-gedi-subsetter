@@ -195,6 +195,10 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         #-- add to page number if valid page
         page_num += 1 if FLAG else 0
 
+    #-- print number of files found for spatial and temporal query
+    if VERBOSE:
+        print("Query returned {} files".format(len(granules.keys())))
+
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):
         #-- retrieve each GEDI file from LP.DAAC server
