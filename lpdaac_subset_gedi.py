@@ -59,6 +59,7 @@ PROGRAM DEPENDENCIES:
 
 UPDATE HISTORY:
     Updated 08/2021: use NASA CMR system to query for granules
+        Use convex hull of polygons to search with CMR system
     Updated 07/2021: set context for multiprocessing to fork child processes
         update regular expression pattern for release 2 of the files
     Updated 05/2021: use try/except for retrieving netrc credentials
@@ -110,9 +111,10 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
     if BBOX:
         #-- if using a bounding box to spatially subset data
         #-- API expects: min_lon,min_lat,max_lon,max_lat
-        bounds_flag = '&bounding_box={1:f},{0:f},{3:f},{2:f}'.format(*BBOX)
+        bounds_flag = '{1:f},{0:f},{3:f},{2:f}'.format(*BBOX)
+        spatial_flag = '&bounding_box={0}'.format(bounds_flag)
         if VERBOSE:
-            print("Spatial bounds: {0:f},{1:f},{2:f},{3:f}".format(*BBOX))
+            print("Spatial bounds: {0}".format(bounds_flag))
     elif POLYGON:
         #-- read shapefile or kml/kmz file
         _,fileExtension = os.path.splitext(POLYGON)
@@ -135,15 +137,17 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
             mpoly=subsetting_tools.polygon().from_geojson(f,variables=v)
         else:
             raise IOError('Unlisted polygon type ({0})'.format(fileExtension))
-        #-- calculate the bounds of the MultiPolygon object
-        #-- Polygon object bounds: min_lon,min_lat,max_lon,max_lat
-        #-- API expects: min_lon,min_lat,max_lon,max_lat
-        bounds_flag = '&bounding_box={0:f},{1:f},{2:f},{3:f}'.format(*mp.bounds)
-        if VERBOSE:
-            print("Polygon bounds: {0:f},{1:f},{2:f},{3:f}".format(*mpoly.bounds))
+        #-- calculate the convex hull of the MultiPolygon object for subsetting
+        #-- the NSIDC api requires polygons to be in counter-clockwise order
+        qhull = mpoly.convex_hull()
+        #-- get exterior coordinates of complex hull
+        X,Y = qhull.xy()
+        #-- coordinate order for polygon flag is lon1,lat1,lon2,lat2,...
+        polygon_flag = ','.join(['{0:f},{1:f}'.format(x,y) for x,y in zip(X,Y)])
+        spatial_flag = '&polygon[]={0}'.format(polygon_flag)
     else:
         #-- do not spatially subset data
-        bounds_flag = ''
+        spatial_flag = ''
 
     #-- if using time start and end to temporally subset data
     if TIME:
@@ -165,7 +169,7 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         size_flag = '&page_size={0:d}'.format(page_size)
         num_flag = '&page_num={0:d}'.format(page_num)
         #-- url for page
-        remote_url = ''.join([HOST,product_flag,version_flag,bounds_flag,
+        remote_url = ''.join([HOST,product_flag,version_flag,spatial_flag,
             temporal_flag,size_flag,num_flag])
         #-- Create and submit request. There are a wide range of exceptions
         #-- that can be thrown here, including HTTPError and URLError.
