@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 polygon.py
-Written by Tyler Sutterley (10/2020)
+Written by Tyler Sutterley (08/2021)
 Reads polygons from GeoJSON, kml/kmz or ESRI shapefile files
 
 INPUTS:
@@ -28,6 +28,7 @@ PYTHON DEPENDENCIES:
         https://pypi.org/project/pyproj/
 
 UPDATE HISTORY:
+    Updated 08/2021: add functions for convex hull and exterior coordinates
     Written 10/2020
 """
 from __future__ import print_function
@@ -38,10 +39,10 @@ import re
 import fiona
 import pyproj
 import zipfile
-import geopandas
 import osgeo.gdal
+import geopandas
 import numpy as np
-from shapely.geometry import Polygon, MultiPolygon
+import shapely.geometry
 # enable kml driver for geopandas
 fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
 
@@ -52,7 +53,10 @@ class polygon(object):
     np.seterr(invalid='ignore')
     def __init__(self, epsg=4326):
         self.filename=None
+        self.feature=None
         self.epsg=epsg
+        self.shape=None
+        self.label=None
 
     def case_insensitive_filename(self,filename):
         """
@@ -99,14 +103,16 @@ class polygon(object):
             # convert points to EPSG
             xi,yi = transformer.transform(x, y)
             # create shapely polygon
-            poly_obj = Polygon(np.c_[xi,yi])
+            poly_obj = shapely.geometry.Polygon(np.c_[xi,yi])
             # cannot have overlapping exterior or interior rings
             if (not poly_obj.is_valid):
                 poly_obj = poly_obj.buffer(0)
             poly_list.append(poly_obj)
         # create shapely multipolygon object
         # return the polygon object
-        return MultiPolygon(poly_list)
+        self.feature = shapely.geometry.MultiPolygon(poly_list)
+        self.shape = (len(self.feature),)
+        return self
 
     def from_kml(self, filename, kmz=False, variables=None):
         """
@@ -148,14 +154,16 @@ class polygon(object):
             # convert points to EPSG
             xi,yi = transformer.transform(coords[:,0], coords[:,1])
             # create polygon from coordinate set
-            poly_obj = Polygon(np.c_[xi,yi])
+            poly_obj = shapely.geometry.Polygon(np.c_[xi,yi])
             # cannot have overlapping exterior or interior rings
             if (not poly_obj.is_valid):
                 poly_obj = poly_obj.buffer(0)
             poly_list.append(poly_obj)
         # create shapely multipolygon object
         # return the polygon object
-        return MultiPolygon(poly_list)
+        self.feature = shapely.geometry.MultiPolygon(poly_list)
+        self.shape = (len(self.feature),)
+        return self
 
     def from_shapefile(self, filename, zip=False, variables=None):
         """
@@ -193,11 +201,37 @@ class polygon(object):
                 # convert points to EPSG
                 xi,yi = transformer.transform(x, y)
                 # create shapely polygon
-                poly_obj = Polygon(np.c_[xi,yi])
+                poly_obj = shapely.geometry.Polygon(np.c_[xi,yi])
                 # cannot have overlapping exterior or interior rings
                 if (not poly_obj.is_valid):
                     poly_obj = poly_obj.buffer(0)
                 poly_list.append(poly_obj)
         # create shapely multipolygon object
         # return the polygon object
-        return MultiPolygon(poly_list)
+        self.feature = shapely.geometry.MultiPolygon(poly_list)
+        self.shape = (len(self.feature),)
+        return self
+
+    def simplify(self, tolerance, preserve_topology=True):
+        """
+        Simplify representation of the geometric object
+        """
+        self.feature = self.feature.simplify(tolerance,
+            preserve_topology=preserve_topology)
+        self.shape = (len(self.feature),)
+        return self
+
+    def convex_hull(self):
+        """
+        Calculate the convex hull of the geometric object
+        """
+        self.feature = shapely.geometry.polygon.orient(
+            self.feature.convex_hull,sign=1)
+        self.shape = np.shape(self.feature)
+        return self
+
+    def xy(self):
+        """
+        Return the coordinates of the geometric object
+        """
+        return self.feature.exterior.xy
