@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 u"""
 lpdaac_subset_gedi.py
-Written by Tyler Sutterley (08/2021)
+Written by Tyler Sutterley (11/2021)
 
 Program to acquire subset GEDI altimetry datafiles from the LP.DAAC API:
 https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
@@ -58,6 +58,8 @@ PROGRAM DEPENDENCIES:
     utilities.py: Download and management utilities for syncing files
 
 UPDATE HISTORY:
+    Updated 11/2021: use scrolling CMR queries to granule names
+        using logging for verbose output
     Updated 08/2021: use NASA CMR system to query for granules
         Use convex hull of polygons to search with CMR system
     Updated 07/2021: set context for multiprocessing to fork child processes
@@ -78,14 +80,14 @@ import future.standard_library
 import sys
 import os
 import re
-import copy
+import json
 import netrc
 import getpass
+import logging
 import builtins
 import argparse
 import posixpath
 import traceback
-import lxml.etree
 import dateutil.rrule
 import dateutil.parser
 import multiprocessing as mp
@@ -94,18 +96,49 @@ import subsetting_tools.utilities
 with future.standard_library.hooks():
     import urllib.request
 
+#-- PURPOSE: build string for version queries
+def build_version_query(version, desired_pad_length=3):
+    #-- check that the version is less than the required
+    if (len(str(version)) > desired_pad_length):
+        raise Exception('Version string too long: "{0}"'.format(version))
+    #-- Strip off any leading zeros
+    version = int(version)
+    query_params = ""
+    while (len(str(version)) <= desired_pad_length):
+        padded_version = str(version).zfill(desired_pad_length)
+        query_params += '&version={0}'.format(padded_version)
+        desired_pad_length -= 1
+    #-- return the query parameters
+    return query_params
+
+#-- PURPOSE: Select only the desired data files from CMR response
+def cmr_filter_json(search_page, form="application/x-hdfeos"):
+    #-- check that there are urls for request
+    urls = list()
+    if (('feed' not in search_page.keys()) or
+        ('entry' not in search_page['feed'].keys())):
+        return urls
+    #-- iterate over references and get cmr location
+    for entry in search_page['feed']['entry']:
+        #-- find url for format type
+        for i,link in enumerate(entry['links']):
+            if ('type' in link.keys()) and (link['type'] == form):
+                urls.append(entry['links'][i]['href'])
+    return urls
+
 #-- PURPOSE: program to acquire subsetted LP.DAAC data
 def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
     TIME=None, PROCESSES=0, VERBOSE=False, MODE=None):
 
-    #-- compile lxml xml parser
-    parser = lxml.etree.XMLParser(recover=True, remove_blank_text=True)
+    #-- create logger
+    loglevel = logging.INFO if VERBOSE else logging.CRITICAL
+    logging.basicConfig(level=loglevel)
 
     #-- print query flag
-    print("Querying NASA CMR for available granules") if VERBOSE else None
+    logging.info("Querying NASA CMR for available granules")
     #-- product and version flags
     product_flag = '?short_name={0}'.format(PRODUCT)
-    version_flag = '&version={0}'.format(VERSION) if VERSION else ''
+    version_flag = build_version_query(VERSION) if VERSION else ''
 
     #-- spatially subset data using bounding box or polygon file
     if BBOX:
@@ -113,8 +146,7 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         #-- API expects: min_lon,min_lat,max_lon,max_lat
         bounds_flag = '{1:f},{0:f},{3:f},{2:f}'.format(*BBOX)
         spatial_flag = '&bounding_box={0}'.format(bounds_flag)
-        if VERBOSE:
-            print("Spatial bounds: {0}".format(bounds_flag))
+        logging.info("Spatial bounds: {0}".format(bounds_flag))
     elif POLYGON:
         #-- read shapefile or kml/kmz file
         _,fileExtension = os.path.splitext(POLYGON)
@@ -138,7 +170,7 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         else:
             raise IOError('Unlisted polygon type ({0})'.format(fileExtension))
         #-- calculate the convex hull of the MultiPolygon object for subsetting
-        #-- the NSIDC api requires polygons to be in counter-clockwise order
+        #-- the CMR api requires polygons to be in counter-clockwise order
         qhull = mpoly.convex_hull()
         #-- get exterior coordinates of complex hull
         X,Y = qhull.xy()
@@ -159,81 +191,64 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         temporal_flag = ''
 
     #-- get dictionary of granules for temporal and spatial subset
-    HOST = posixpath.join('https://cmr.earthdata.nasa.gov','search','granules')
-    page_size,page_num = (10,1)
-    granules = {}
-    FLAG = True
-    #-- reduce to a set number of files per page and then iterate through pages
-    while FLAG:
-        #-- flags for page size and page number
+    HOST=posixpath.join('https://cmr.earthdata.nasa.gov','search','granules.json')
+    page_size = 100
+    granules = []
+    cmr_scroll_id = None
+    while True:
+        #-- flags for page size
         size_flag = '&page_size={0:d}'.format(page_size)
-        num_flag = '&page_num={0:d}'.format(page_num)
         #-- url for page
-        remote_url = ''.join([HOST,product_flag,version_flag,spatial_flag,
-            temporal_flag,size_flag,num_flag])
-        #-- Create and submit request. There are a wide range of exceptions
-        #-- that can be thrown here, including HTTPError and URLError.
-        request=subsetting_tools.utilities.urllib2.Request(remote_url)
+        cmr_query_url = ''.join([HOST,product_flag,'&provider=LPDAAC_ECS',
+            '&sort_key[]=start_date','&sort_key[]=producer_granule_id',
+            '&scroll=true',version_flag,spatial_flag,temporal_flag,size_flag])
+        request = subsetting_tools.utilities.urllib2.Request(cmr_query_url)
+        if cmr_scroll_id:
+            request.add_header('cmr-scroll-id', cmr_scroll_id)
         response=subsetting_tools.utilities.urllib2.urlopen(request, timeout=20)
-        tree=lxml.etree.parse(response, parser)
-        root=tree.getroot()
-        #-- total number of hits for subset (not just on page)
-        hits = int(tree.find('hits').text)
-        #-- extract references on page
-        references = [i for i in tree.iter('reference',root.nsmap)]
-        #-- check flag
-        FLAG = bool(len(references))
-        for reference in references:
-            name = reference.find('name',root.nsmap).text
-            id = reference.find('id',root.nsmap).text
-            location = reference.find('location',root.nsmap).text
-            revision_id = reference.find('revision-id',root.nsmap).text
-            #-- read cmd location to get filename
-            request=subsetting_tools.utilities.urllib2.Request(location)
-            resp=subsetting_tools.utilities.urllib2.urlopen(request,timeout=20)
-            #-- parse cmd location url
-            tr = lxml.etree.parse(resp, parser)
-            url, = tr.xpath('.//OnlineAccessURLs/OnlineAccessURL/URL')
-            #-- create list of id, cmd location, revision, and url
-            granules[name] = [id,location,revision_id,url.text]
-        #-- add to page number if valid page
-        page_num += 1 if FLAG else 0
+        if not cmr_scroll_id:
+            # Python 2 and 3 have different case for the http headers
+            headers = {k.lower(): v for k, v in dict(response.info()).items()}
+            cmr_scroll_id = headers['cmr-scroll-id']
+            hits = int(headers['cmr-hits'])
+        #-- parse the json response
+        search_page = json.loads(response.read())
+        url_scroll_results = cmr_filter_json(search_page)
+        if not url_scroll_results:
+            break
+        granules.extend(url_scroll_results)
 
     #-- print number of files found for spatial and temporal query
-    if VERBOSE:
-        print("Query returned {} files".format(len(granules.keys())))
+    logging.info("Query returned {} files".format(len(granules)))
 
     #-- sync in series if PROCESSES = 0
     if (PROCESSES == 0):
         #-- retrieve each GEDI file from LP.DAAC server
-        for key,val in granules.items():
-            #-- extract information about granule
-            id,location,revision_id,remote_file = copy.copy(val)
+        for granule in granules:
             #-- local version of file
-            args = subsetting_tools.utilities.url_split(remote_file)
+            args = subsetting_tools.utilities.url_split(granule)
             local_file = os.path.join(DIRECTORY,args[-2],args[-1])
-            xml = '{0}.xml'.format(remote_file)
+            xml = '{0}.xml'.format(granule)
             if not subsetting_tools.utilities.compare_checksums(xml,local_file):
                 #-- get remote file
-                subsetting_tools.utilities.from_lpdaac(remote_file, local_file,
+                out = subsetting_tools.utilities.from_lpdaac(granule, local_file,
                     build=False, verbose=VERBOSE, mode=MODE)
+                #-- print the output string
+                logging.info(out)
     else:
-        if VERBOSE:
-            print('Syncing in parallel with {0:d} processes'.format(PROCESSES))
+        logging.info('Syncing in parallel with {0:d} processes'.format(PROCESSES))
         #-- set multiprocessing start method
         ctx = mp.get_context("fork")
         #-- sync in parallel with multiprocessing Pool
         pool = ctx.Pool(processes=PROCESSES)
         #-- retrieve each GEDI file from LP.DAAC server
         output = []
-        for key,val in granules.items():
-            #-- extract information about granule
-            id,location,revision_id,remote_file = copy.copy(val)
+        for granule in granules:
             #-- local version of file
-            args = subsetting_tools.utilities.url_split(remote_file)
+            args = subsetting_tools.utilities.url_split(granule)
             local_file = os.path.join(DIRECTORY,args[-2],args[-1])
             output.append(pool.apply_async(multiprocess_sync,
-                args=(remote_file,local_file,MODE)))
+                args=(granule,local_file,MODE)))
         #-- start multiprocessing jobs
         #-- close the pool
         #-- prevents more tasks from being submitted to the pool
@@ -242,7 +257,7 @@ def lpdaac_subset_gedi(DIRECTORY, PRODUCT, VERSION, BBOX=None, POLYGON=None,
         pool.join()
         #-- print the output string
         for out in output:
-            print(out.get()) if VERBOSE else None
+            logging.info(out.get())
 
 #-- PURPOSE: wrapper for running the sync program in multiprocessing mode
 def multiprocess_sync(remote_file, local_file, MODE):
@@ -255,8 +270,8 @@ def multiprocess_sync(remote_file, local_file, MODE):
             #-- if there has been an error exception
             #-- print the type, value, and stack trace of the
             #-- current exception being handled
-            print('process id {0:d} failed'.format(os.getpid()))
-            traceback.print_exc()
+            logging.critical('process id {0:d} failed'.format(os.getpid()))
+            logging.error(traceback.format_exc())
         else:
             return output
 
