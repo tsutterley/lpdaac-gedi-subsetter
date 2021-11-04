@@ -31,7 +31,7 @@ if gdal_output[3]:
     install_requires[gdal_index] = 'gdal=={0}'.format(gdal_output[3])
 
 setup(
-    name='lpdaac-gedi-subsetter',
+    name='subsetting_tools',
     version='0.0.0.2',
     description='Program for using the LP.DAAC GEDI subsetter api for retrieving NASA GEDI data',
     url='https://github.com/tsutterley/lpdaac-gedi-subsetter',

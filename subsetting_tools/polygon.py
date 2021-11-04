@@ -221,6 +221,12 @@ class polygon(object):
         self.shape = (len(self.feature),)
         return self
 
+    def bounds(self):
+        """
+        Return the bounding box of the geometric object
+        """
+        return self.feature.bounds
+
     def convex_hull(self):
         """
         Calculate the convex hull of the geometric object
